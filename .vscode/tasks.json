@@ -13,8 +13,7 @@
         "-F${workspaceFolder}/frameworks",
         "-framework",
         "SDL2",
-        "-headerpad_max_install_names",
-        "-O3"
+        "-headerpad_max_install_names"
       ],
       "group": {
         "kind": "build",
