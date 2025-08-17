@@ -7,12 +7,17 @@
       "args": [
         "-fdiagnostics-color=always",
         "-g",
-        "${workspaceFolder}/src/main.c",
+        "${workspaceFolder}/src/*.c",
+        "${workspaceFolder}/src/utils/*.c",
         "-o",
         "${workspaceFolder}/build/${config:projectName}",
         "-F${workspaceFolder}/frameworks",
         "-framework",
         "SDL2",
+        "-framework",
+        "SDL2_image",
+        "-I",
+        "include",
         "-headerpad_max_install_names"
       ],
       "group": {

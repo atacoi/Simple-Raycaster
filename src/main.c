@@ -1,20 +1,12 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 #include <stdlib.h>
 #include <math.h>
 
-#define TITLE "Raycaster"
-#define SCREEN_WIDTH 1080
-#define SCREEN_HEIGHT 720
-
-#define FOV 66.0
-#define PI 3.14
-
-#define EPS 1e-5
-
-#define MAP_SIZE 10
-
-// 0 - false, 1 - true
-#define ASSERT(code, ...) if (!(code)) { fprintf(stderr, __VA_ARGS__); }
+#include "app.h"
+#include "global_macros.h"
+#include "utils/vector.h"
+#include "map.h"
 
 enum Color {
     RED   = 0xFF0000FF,
@@ -27,70 +19,50 @@ enum Side {
     YSIDE,
 };
 
-typedef struct vector2f {
-    float x;
-    float y;
-} v2f;
-
-typedef struct vector2i {
-    int x;
-    int y;
-} v2i;
-
-struct controller {
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    SDL_Texture* texture;
-
-    Uint32 pixels[SCREEN_WIDTH * SCREEN_HEIGHT]; 
-
-    v2f playerPos, dir, cameraPos;
-};
-
-
-const int MAP[MAP_SIZE * MAP_SIZE] = {
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 0, 0, 0, 2, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 3, 0, 0, 0, 0, 0, 0, 1, 
-    1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 
-    1, 0, 0, 0, 0, 3, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 
-    1, 0, 0, 0, 2, 0, 0, 0, 0, 1, 
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-};
-
-int min(int a, int b); 
-
-int max(int a, int b); 
-// exits if any part of the initiation fails 
-void init(struct controller* controller);
-
-void rotate(struct controller* controller, float angle);
-
-// returns -1 if n < 0.0, 1 if n > 0.0 and 0 if n == 0.0
-int sign(float n);
+struct enemy {
+    v2f pos;
+    SDL_Surface* img_surface;
+} tenna;
 
 // Draws column x from [startY, endY]
 void drawVertLine(int x, int startY, int endY, Uint32 color, Uint32 pixels[]);
 
-int hasCollided(struct controller* controller);
-
 // assumes that pixel buffer was cleared 
-void render(struct controller* controller);
+void render(struct controller* controller, int map[], int mapSize);
 
 int main(int argc, char* argv[]) {
-    struct controller controller;
+    struct controller* controller = controller_init();
 
-    init(&controller);
+    controller->playerPos.x = 1.0f;
+    controller->playerPos.y = 3.0f;
 
-    controller.playerPos = (v2f) { 1.0f, 3.0f };
-    controller.dir       = (v2f) { 0.0f, -1.0f };
-    controller.cameraPos = (v2f) { 0.66f, 0.0f };
+    // make sure dir is facing +y axis (down)
+    controller->dir.x = -1.0f;
+    controller->dir.y = 0.0f;
+    v2f_norm(&(controller->dir), EPSILON);
+
+    controller->cameraPos.x = 0.0f;
+    controller->cameraPos.y = 0.66f;
+
+    SDL_Surface *original = IMG_Load("./imgs/test.png");
+    ASSERT(original, "IMG_Load failed: %s\n", IMG_GetError());
+
+    SDL_Surface *surface = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_ABGR8888, 0);
+    SDL_FreeSurface(original);  // free original after conversion
+    tenna.img_surface = surface;
+SDL_PixelFormat *fmt = tenna.img_surface->format;
+
+    ASSERT((tenna.img_surface), "Image Failed to Load: %s\n", SDL_GetError());
+
+    tenna.pos = (v2f) {1.0f, 1.0f};
+
+    int *map = NULL;
+    int mapSize = 0;
+    fillMap("./file.txt", &map, &mapSize);
 
     int running = 1;
     Uint32 oldTime = 0, time = 0;
+    v2f nxtPlayerPos = (v2f) {0.0, 0.0};
     while(running) {
         oldTime = time;
         time = SDL_GetTicks();
@@ -104,91 +76,48 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        float rotationAngle = 1.5f * frameTime;
-        float moveSpeed = 2.0f * frameTime;
+        float rotationAngle = 3.0f * frameTime; // radians per second
+        float moveSpeed = 4.0f * frameTime; // blocks per second
+
+        nxtPlayerPos.x = controller->playerPos.x;
+        nxtPlayerPos.y = controller->playerPos.y;
 
         const Uint8 *keystate = SDL_GetKeyboardState(NULL);
         if (keystate[SDL_SCANCODE_LEFT]) {
-            rotate(&controller, +rotationAngle);
+            rotate(controller, +rotationAngle);
         }
 
         if (keystate[SDL_SCANCODE_RIGHT]) {
-            rotate(&controller, -rotationAngle);
+            rotate(controller, -rotationAngle);
         }
 
         if (keystate[SDL_SCANCODE_UP]) {
-            controller.playerPos.x += controller.dir.x * moveSpeed;
-            controller.playerPos.y += controller.dir.y * moveSpeed;
-            if(!hasCollided(&controller)) {
-                controller.playerPos.x -= controller.dir.x * moveSpeed;
-                controller.playerPos.y -= controller.dir.y * moveSpeed;
+            nxtPlayerPos.x += controller->dir.x * moveSpeed;
+            nxtPlayerPos.y += controller->dir.y * moveSpeed;
+            if(!(hasCollided(&nxtPlayerPos, map, mapSize))) {
+                controller->playerPos.x = nxtPlayerPos.x;
+                controller->playerPos.y = nxtPlayerPos.y;
             }
         }
 
         if (keystate[SDL_SCANCODE_DOWN]) {
-            controller.playerPos.x -= controller.dir.x * moveSpeed;
-            controller.playerPos.y -= controller.dir.y * moveSpeed;
-            if(!hasCollided(&controller)) {
-                controller.playerPos.x += controller.dir.x * moveSpeed;
-                controller.playerPos.y += controller.dir.y * moveSpeed;
+            nxtPlayerPos.x -= controller->dir.x * moveSpeed;
+            nxtPlayerPos.y -= controller->dir.y * moveSpeed;
+            if(!(hasCollided(&nxtPlayerPos, map, mapSize))) {
+                controller->playerPos.x = nxtPlayerPos.x;
+                controller->playerPos.y = nxtPlayerPos.y;
             }
         }
-        printf("%f %f\n", controller.playerPos.x, controller.playerPos.y);
 
-        memset(controller.pixels, 0, sizeof(controller.pixels));
-        render(&controller);
+        memset(controller->pixels, 0, sizeof(controller->pixels));
+        render(controller, map, mapSize);
+        SDL_RenderClear(controller->renderer);
         
-        SDL_UpdateTexture(controller.texture, NULL, controller.pixels, SCREEN_WIDTH * sizeof(Uint32));
-        SDL_RenderCopyEx(controller.renderer, controller.texture, NULL, NULL, 0.0, NULL, SDL_FLIP_VERTICAL);
-        SDL_RenderPresent(controller.renderer);
+        SDL_UpdateTexture(controller->texture, NULL, controller->pixels, SCREEN_WIDTH * sizeof(Uint32));
+        SDL_RenderCopyEx(controller->renderer, controller->texture, NULL, NULL, 0.0, NULL, SDL_FLIP_VERTICAL);
+        SDL_RenderPresent(controller->renderer);
     }
-
-    SDL_DestroyTexture(controller.texture);
-    SDL_DestroyRenderer(controller.renderer);
-    SDL_DestroyWindow(controller.window);
     return 0;
-}
-
-int min(int a, int b) {
-    return a <= b ? a : b;
-}
-
-int max(int a, int b) {
-    return a >= b ? a : b;
-}
-
-void init(struct controller* controller) {
-    ASSERT(!SDL_Init(SDL_INIT_VIDEO), "SDL2 Error: %s\n", SDL_GetError());
-    
-    controller->window = SDL_CreateWindow(TITLE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
-    ASSERT(controller->window, "SDL2 Error: %s\n", SDL_GetError());
-
-    controller->renderer = SDL_CreateRenderer(controller->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    ASSERT(controller->renderer, "SDL2 Error: %s\n", SDL_GetError());
-
-    Uint32 format = SDL_BYTEORDER == SDL_BIG_ENDIAN ? SDL_PIXELFORMAT_RGBA8888 : SDL_PIXELFORMAT_ABGR8888;
-
-    controller->texture = SDL_CreateTexture(controller->renderer, format, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
-    ASSERT(controller->texture, "SDL2 Error: %s\n", SDL_GetError());
-}
-
-void rotate(struct controller* controller, float angle) {
-    float cosine    = cosf(angle);
-    float sine      = sinf(angle);
-    v2f d = controller->dir;
-    v2f c = controller->cameraPos;
-
-    controller->dir.x = d.x * cosine - d.y * sine;
-    controller->dir.y = d.x * sine   + d.y * cosine;
-
-    controller->cameraPos.x = c.x * cosine - c.y * sine;
-    controller->cameraPos.y = c.x * sine   + c.y * cosine;
-}
-
-int sign(float n) {
-    if (fabs(n) <= EPS) return 0;
-
-    return n < 0.0 ? -1 : 1;
 }
 
 void drawVertLine(int x, int startY, int endY, Uint32 color, Uint32 pixels[]) {
@@ -197,16 +126,7 @@ void drawVertLine(int x, int startY, int endY, Uint32 color, Uint32 pixels[]) {
     }
 }
 
-int hasCollided(struct controller* controller) {
-    const v2f* playerPos = &(controller->playerPos);
-    v2i playerBlock      = (v2i) {  (int) playerPos->x, 
-                                    (int) playerPos->y };
-    return  playerBlock.x >= 0 && playerBlock.x < MAP_SIZE && 
-            playerBlock.y >= 0 && playerBlock.y < MAP_SIZE &&
-            MAP[playerBlock.y * MAP_SIZE + playerBlock.x] == 0;
-}
-
-void render(struct controller* controller) {
+void render(struct controller* controller, int map[], int mapSize) {
     for (int x = 0; x < SCREEN_WIDTH; x++) {
         // normalize x to [-1, 1]
         const float n = 2.0 * (x / (float) SCREEN_WIDTH) - 1.0;
@@ -219,8 +139,8 @@ void render(struct controller* controller) {
                                 dir->y + cameraPos->y * n };
 
         // Distance from 1 x/y block to the next x/y block, respectively 
-        const v2f deltaDist = (v2f) {   fabsf(rayDir.x) <= EPS ? 1e30 : fabsf(1.0f / rayDir.x), 
-                                        fabsf(rayDir.y) <= EPS ? 1e30 : fabsf(1.0f / rayDir.y) };
+        const v2f deltaDist = (v2f) {   fabsf(rayDir.x) <= EPSILON ? 1e30 : fabsf(1.0f / rayDir.x), 
+                                        fabsf(rayDir.y) <= EPSILON ? 1e30 : fabsf(1.0f / rayDir.y) };
 
         v2i playerBlock = (v2i) {   (int) playerPos->x, 
                                     (int) playerPos->y };
@@ -230,7 +150,7 @@ void render(struct controller* controller) {
                                 (rayDir.y < 0 ? playerPos->y - playerBlock.y : playerBlock.y + 1.0f - playerPos->y) * deltaDist.y };
 
         
-        const int stepX = sign(rayDir.x), stepY = sign(rayDir.y); 
+        const int stepX = SIGN(rayDir.x), stepY = SIGN(rayDir.y); 
 
 
         // The side we hit (either a y or x side)
@@ -249,10 +169,10 @@ void render(struct controller* controller) {
                 playerBlock.y += stepY;
                 hitSide        = YSIDE;
             }
-            ASSERT( 0 <= playerBlock.x && playerBlock.x < MAP_SIZE &&
-                    0 <= playerBlock.y && playerBlock.y < MAP_SIZE, "Out of bounds!\n");
+            ASSERT( 0 <= playerBlock.x && playerBlock.x < mapSize &&
+                    0 <= playerBlock.y && playerBlock.y < mapSize, "Out of bounds!\n");
             
-            hit = MAP[(playerBlock.y * MAP_SIZE) + playerBlock.x];
+            hit = map[(playerBlock.y * mapSize) + playerBlock.x];
         }
 
         switch(hit) {
@@ -269,16 +189,70 @@ void render(struct controller* controller) {
 
         // distance perpendicular to the camera plane
         float perpDist = hitSide == XSIDE ? (sideDist.x - deltaDist.x) : (sideDist.y - deltaDist.y);
+        
+        int texNum = hit - 1;
+        if (texNum == 1) {
+            ASSERT(SDL_LockSurface(tenna.img_surface), "SDL2 Error: fuck %s\n", SDL_GetError());
 
-        const int lineHeight  = SCREEN_HEIGHT / perpDist;
-        const int bottomLine  = max(SCREEN_HEIGHT / 2 - lineHeight / 2, 0); 
-        const int topLine     = min(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1); 
+            int texWidth  = tenna.img_surface->w;   // 121 in your case
+            int texHeight = tenna.img_surface->h;
 
-        const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
-        const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
+            int lineHeight  = (int) (SCREEN_HEIGHT / perpDist);
+            int bottomLine  = (int) MAX(SCREEN_HEIGHT / 2 - lineHeight / 2, 0);
+            int topLine     = (int) MIN(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1);
 
-        drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
-        drawVertLine(x, bottomLine, topLine, hitColor, controller->pixels);
-        drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
+            const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
+            const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
+
+            drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
+            drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
+
+            // compute exact hit coordinate along wall
+            float wallX;
+            if (hitSide == XSIDE) wallX = playerPos->y + perpDist * rayDir.y;
+            else           wallX = playerPos->x + perpDist * rayDir.x;
+            wallX -= floor(wallX);
+
+            int texX = (int)(wallX * texWidth);
+            // correct the offset so that the image is flipped vertically 
+            // https://permadi.com/tutorial/raycast/rayc10.html
+            if (hitSide == XSIDE && rayDir.x > 0) texX = texWidth - texX - 1;
+            if (hitSide == YSIDE && rayDir.y < 0) texX = texWidth - texX - 1;
+
+            // vertical stepping for the texture in terms of the lineHeight
+            double step   = 1.0 * texHeight / lineHeight;
+            // dealing with edge case when there is no ceiling visible so flip 
+            // the bottom so that it falls on the textured wall's line
+            double texPos =  (bottomLine - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
+
+            int pitch = tenna.img_surface->pitch;
+
+            printf("Image format: %s\n", SDL_GetPixelFormatName(tenna.img_surface->format->format));
+
+            // iterate from top to bottom since final orientation is flipped 
+            for (int y = topLine - 1; y >= bottomLine; y--) {
+                int texY = ((int) texPos) % texHeight;
+                Uint32* const target_pixel = (Uint32 *) ((Uint8*) tenna.img_surface->pixels + texY * tenna.img_surface->pitch + texX * tenna.img_surface->format->BytesPerPixel);
+
+                controller->pixels[y * SCREEN_WIDTH + x] =
+                    *target_pixel;
+
+                texPos += step;
+            }
+            SDL_UnlockSurface(tenna.img_surface);
+        }
+
+        else {
+            int lineHeight  = (int) (SCREEN_HEIGHT / perpDist);
+            int bottomLine  = (int) MAX(SCREEN_HEIGHT / 2 - lineHeight / 2, 0);
+            int topLine     = (int) MIN(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1);
+
+            const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
+            const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
+
+            drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
+            drawVertLine(x, bottomLine, topLine, hitColor, controller->pixels);
+            drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
+        }
     }
 }

@@ -47,7 +47,11 @@
     "typeinfo": "cpp",
     "unordered_map": "cpp",
     "variant": "cpp",
-    "sdl.h": "c"
+    "sdl.h": "c",
+    "global_constants.h": "c",
+    "global_macros.h": "c",
+    "vector.h": "c",
+    "stdlib.h": "c"
   },
   "projectName": "main"
 }
