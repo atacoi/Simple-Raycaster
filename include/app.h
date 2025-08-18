@@ -18,9 +18,9 @@ struct controller {
 };
 
 // exits if any part of the initiation fails 
-struct controller* controller_init();
+struct controller* initController();
 
-void controller_free(struct controller* controller);
+void freeController(struct controller* controller);
 
 void rotate(struct controller* controller, float angle);
 

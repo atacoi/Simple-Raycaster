@@ -1,6 +1,6 @@
 #include "app.h"
 
-struct controller* controller_init() {
+struct controller* initController() {
     struct controller *controller = (struct controller*) malloc(sizeof(struct controller));
 
     ASSERT(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS), "SDL2 Error: %s\n", SDL_GetError());
@@ -19,7 +19,7 @@ struct controller* controller_init() {
     return controller;
 }
 
-void controller_free(struct controller* controller) {
+void freeController(struct controller* controller) {
     SDL_DestroyTexture(controller->texture);
     SDL_DestroyRenderer(controller->renderer);
     SDL_DestroyWindow(controller->window);

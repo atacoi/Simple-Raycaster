@@ -27,4 +27,7 @@
 
 #define BUFFER_SIZE 1080
 
+#define XSIDE 0
+#define YSIDE 1
+
 #endif
