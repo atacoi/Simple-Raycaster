@@ -3,18 +3,18 @@
 struct controller* controller_init() {
     struct controller *controller = (struct controller*) malloc(sizeof(struct controller));
 
-    ASSERT(!SDL_Init(SDL_INIT_VIDEO), "SDL2 Error: %s\n", SDL_GetError());
+    ASSERT(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS), "SDL2 Error: %s\n", SDL_GetError());
 
     controller->window = SDL_CreateWindow(APP_TITLE, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
     ASSERT(controller->window, "SDL2 Error: %s\n", SDL_GetError());
 
-    controller->renderer = SDL_CreateRenderer(controller->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    controller->renderer = SDL_CreateRenderer(controller->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE);
     ASSERT(controller->renderer, "SDL2 Error: %s\n", SDL_GetError());
 
     Uint32 format = SDL_BYTEORDER == SDL_BIG_ENDIAN ? SDL_PIXELFORMAT_RGBA8888 : SDL_PIXELFORMAT_ABGR8888;
     printf("%d\n", format);
 
-    controller->texture = SDL_CreateTexture(controller->renderer, format, SDL_TEXTUREACCESS_STREAMING, SCREEN_WIDTH, SCREEN_HEIGHT);
+    controller->texture = SDL_CreateTexture(controller->renderer, format, SDL_TEXTUREACCESS_TARGET, SCREEN_WIDTH, SCREEN_HEIGHT);
     ASSERT(controller->texture, "SDL2 Error: %s\n", SDL_GetError());
     return controller;
 }

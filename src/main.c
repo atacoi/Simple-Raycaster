@@ -7,6 +7,7 @@
 #include "global_macros.h"
 #include "utils/vector.h"
 #include "map.h"
+#include "sprite_sheet.h"
 
 enum Color {
     RED   = 0xFF0000FF,
@@ -22,19 +23,19 @@ enum Side {
 struct enemy {
     v2f pos;
     SDL_Surface* img_surface;
-} tenna;
+};
 
 // Draws column x from [startY, endY]
 void drawVertLine(int x, int startY, int endY, Uint32 color, Uint32 pixels[]);
 
 // assumes that pixel buffer was cleared 
-void render(struct controller* controller, int map[], int mapSize);
+void render(struct controller* controller, int map[], int mapSize, SpriteSheet *sheet);
 
 int main(int argc, char* argv[]) {
     struct controller* controller = controller_init();
 
-    controller->playerPos.x = 1.0f;
-    controller->playerPos.y = 3.0f;
+    controller->playerPos.x = 2.0f;
+    controller->playerPos.y = 8.0f;
 
     // make sure dir is facing +y axis (down)
     controller->dir.x = -1.0f;
@@ -44,17 +45,7 @@ int main(int argc, char* argv[]) {
     controller->cameraPos.x = 0.0f;
     controller->cameraPos.y = 0.66f;
 
-    SDL_Surface *original = IMG_Load("./imgs/test.png");
-    ASSERT(original, "IMG_Load failed: %s\n", IMG_GetError());
-
-    SDL_Surface *surface = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_ABGR8888, 0);
-    SDL_FreeSurface(original);  // free original after conversion
-    tenna.img_surface = surface;
-SDL_PixelFormat *fmt = tenna.img_surface->format;
-
-    ASSERT((tenna.img_surface), "Image Failed to Load: %s\n", SDL_GetError());
-
-    tenna.pos = (v2f) {1.0f, 1.0f};
+    SpriteSheet *sheet = loadSpriteSheet("./tile_sheet.png", controller->renderer, SDL_PIXELFORMAT_ABGR8888, 2, 3);
 
     int *map = NULL;
     int mapSize = 0;
@@ -63,6 +54,7 @@ SDL_PixelFormat *fmt = tenna.img_surface->format;
     int running = 1;
     Uint32 oldTime = 0, time = 0;
     v2f nxtPlayerPos = (v2f) {0.0, 0.0};
+    SDL_Rect src;
     while(running) {
         oldTime = time;
         time = SDL_GetTicks();
@@ -110,13 +102,18 @@ SDL_PixelFormat *fmt = tenna.img_surface->format;
         }
 
         memset(controller->pixels, 0, sizeof(controller->pixels));
-        render(controller, map, mapSize);
+        render(controller, map, mapSize, sheet);
         SDL_RenderClear(controller->renderer);
         
         SDL_UpdateTexture(controller->texture, NULL, controller->pixels, SCREEN_WIDTH * sizeof(Uint32));
+
         SDL_RenderCopyEx(controller->renderer, controller->texture, NULL, NULL, 0.0, NULL, SDL_FLIP_VERTICAL);
         SDL_RenderPresent(controller->renderer);
     }
+
+    freeMap(&map);
+    controller_free(controller);
+    freeSpriteSheet(sheet);
     return 0;
 }
 
@@ -126,7 +123,9 @@ void drawVertLine(int x, int startY, int endY, Uint32 color, Uint32 pixels[]) {
     }
 }
 
-void render(struct controller* controller, int map[], int mapSize) {
+void render(struct controller* controller, int map[], int mapSize, SpriteSheet *sheet) {
+    SDL_Surface *spriteSheet = sheet->spriteSheet;
+    ASSERT((!SDL_LockSurface(spriteSheet)), "SDL2 Error: %s\n", SDL_GetError());
     for (int x = 0; x < SCREEN_WIDTH; x++) {
         // normalize x to [-1, 1]
         const float n = 2.0 * (x / (float) SCREEN_WIDTH) - 1.0;
@@ -191,68 +190,56 @@ void render(struct controller* controller, int map[], int mapSize) {
         float perpDist = hitSide == XSIDE ? (sideDist.x - deltaDist.x) : (sideDist.y - deltaDist.y);
         
         int texNum = hit - 1;
-        if (texNum == 1) {
-            ASSERT(SDL_LockSurface(tenna.img_surface), "SDL2 Error: fuck %s\n", SDL_GetError());
+        ASSERT((texNum < sheet->spriteLength && texNum >= 0), "Texture index out of bounds: %d\n", texNum);
+        printf("%d\n", texNum);
 
-            int texWidth  = tenna.img_surface->w;   // 121 in your case
-            int texHeight = tenna.img_surface->h;
+        Sprite *hitSprite = &(sheet->sprites[texNum]);
 
-            int lineHeight  = (int) (SCREEN_HEIGHT / perpDist);
-            int bottomLine  = (int) MAX(SCREEN_HEIGHT / 2 - lineHeight / 2, 0);
-            int topLine     = (int) MIN(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1);
+        int texWidth  = sheet->spriteDimensions.x;  
+        int texHeight = sheet->spriteDimensions.y;
 
-            const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
-            const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
+        int lineHeight  = (int) (SCREEN_HEIGHT / perpDist);
+        int bottomLine  = (int) MAX(SCREEN_HEIGHT / 2 - lineHeight / 2, 0);
+        int topLine     = (int) MIN(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1);
 
-            drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
-            drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
+        const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
+        const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
 
-            // compute exact hit coordinate along wall
-            float wallX;
-            if (hitSide == XSIDE) wallX = playerPos->y + perpDist * rayDir.y;
-            else           wallX = playerPos->x + perpDist * rayDir.x;
-            wallX -= floor(wallX);
+        drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
+        drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
 
-            int texX = (int)(wallX * texWidth);
-            // correct the offset so that the image is flipped vertically 
-            // https://permadi.com/tutorial/raycast/rayc10.html
-            if (hitSide == XSIDE && rayDir.x > 0) texX = texWidth - texX - 1;
-            if (hitSide == YSIDE && rayDir.y < 0) texX = texWidth - texX - 1;
+        // compute exact hit coordinate along wall
+        float wallX;
+        if (hitSide == XSIDE) wallX = playerPos->y + perpDist * rayDir.y;
+        else           wallX = playerPos->x + perpDist * rayDir.x;
+        wallX -= floor(wallX);
 
-            // vertical stepping for the texture in terms of the lineHeight
-            double step   = 1.0 * texHeight / lineHeight;
-            // dealing with edge case when there is no ceiling visible so flip 
-            // the bottom so that it falls on the textured wall's line
-            double texPos =  (bottomLine - SCREEN_HEIGHT / 2 + lineHeight / 2) * step;
+        int texX = (int)(wallX * texWidth);
+        // correct the offset so that the image is flipped vertically 
+        // https://permadi.com/tutorial/raycast/rayc10.html
+        if (hitSide == XSIDE && rayDir.x > 0) texX = texWidth - texX - 1;
+        if (hitSide == YSIDE && rayDir.y < 0) texX = texWidth - texX - 1;
 
-            int pitch = tenna.img_surface->pitch;
+        texX += hitSprite->sideStart.x;
 
-            printf("Image format: %s\n", SDL_GetPixelFormatName(tenna.img_surface->format->format));
+        // vertical stepping for the texture in terms of the lineHeight
+        double step   = 1.0 * texHeight / lineHeight;
+        // dealing with edge case when there is no ceiling visible so flip 
+        // the bottom so that it falls on the textured wall's line
+        double texPos =  (bottomLine - SCREEN_HEIGHT / 2 + lineHeight / 2) * step + hitSprite->sideStart.y;
 
-            // iterate from top to bottom since final orientation is flipped 
-            for (int y = topLine - 1; y >= bottomLine; y--) {
-                int texY = ((int) texPos) % texHeight;
-                Uint32* const target_pixel = (Uint32 *) ((Uint8*) tenna.img_surface->pixels + texY * tenna.img_surface->pitch + texX * tenna.img_surface->format->BytesPerPixel);
+        int pitch = spriteSheet->pitch;
 
-                controller->pixels[y * SCREEN_WIDTH + x] =
-                    *target_pixel;
+        // iterate from top to bottom since final orientation is flipped 
+        for (int y = topLine - 1; y >= bottomLine; y--) {
+            int texY = ((int) texPos);
+            Uint32* const target_pixel = (Uint32 *) ((Uint8*) spriteSheet->pixels + texY * spriteSheet->pitch + texX * spriteSheet->format->BytesPerPixel);
 
-                texPos += step;
-            }
-            SDL_UnlockSurface(tenna.img_surface);
-        }
+            controller->pixels[y * SCREEN_WIDTH + x] =
+                *target_pixel;
 
-        else {
-            int lineHeight  = (int) (SCREEN_HEIGHT / perpDist);
-            int bottomLine  = (int) MAX(SCREEN_HEIGHT / 2 - lineHeight / 2, 0);
-            int topLine     = (int) MIN(SCREEN_HEIGHT / 2 + lineHeight / 2, SCREEN_HEIGHT - 1);
-
-            const Uint32 CEILING_COLOR  = 0xFFFFFFFF;
-            const Uint32 FLOOR_COLOR    = SDL_BYTEORDER == SDL_BIG_ENDIAN ? 0x808080FF : 0xFF808080;
-
-            drawVertLine(x, 0, bottomLine, FLOOR_COLOR, controller->pixels);
-            drawVertLine(x, bottomLine, topLine, hitColor, controller->pixels);
-            drawVertLine(x, topLine, SCREEN_HEIGHT - 1, CEILING_COLOR, controller->pixels);
+            texPos += step;
         }
     }
+    SDL_UnlockSurface(spriteSheet);
 }
