@@ -1,6 +1,7 @@
 # Simple Raycaster
 
-A simple raycaster based off Lode's raycating tutorial built in SDL2
+![](https://raw.githubusercontent.com/atacoi/Simple-Raycaster/main/walk.gif)
 
+A simple raycaster based off Lode's raycating tutorial built in SDL2.
 </hr>
-<a href="https://lodev.org/cgtutor/raycasting.html">src</a>
+Check out the tutorial <a href="https://lodev.org/cgtutor/raycasting.html">here</a>!
