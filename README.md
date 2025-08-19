@@ -24,7 +24,7 @@ The first line specifies the map's width and height (assumed to be a perfect squ
 
 The subsequent lines specify the map's structure. 
 
-Each block in the map is specified by a 32-bit ``integer`` value, as in the Tile Info section.
+Each block in the map is specified by a 32-bit ``integer`` value, as explained in the Tile Info section.
 
 The map must be layed out row by row with newlines (``\n``) separating each row.
 
