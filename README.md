@@ -40,12 +40,12 @@ The following denotes the meaning of each ``integer`` value found in ``file.txt`
 
 <ul>
   <li> 0 - empty tile </li>
-  <li> 1 - top left title (gray brick)  </li>
-  <li> 2 - top middle title (flipped gray brick)  </li>
-  <li> 3 - top right title (dark blue brick)  </li>
-  <li> 4 - bottom left title (cell)  </li>
-  <li> 5 - bottom middle title (cell with skeleton)  </li>
-  <li> 6 - bottom right title (dark blue brick)  </li>
+  <li> 1 - top left tile (gray brick)  </li>
+  <li> 2 - top middle tile (flipped gray brick)  </li>
+  <li> 3 - top right tile (dark blue brick)  </li>
+  <li> 4 - bottom left tile (cell)  </li>
+  <li> 5 - bottom middle tile (cell with skeleton)  </li>
+  <li> 6 - bottom right tile (dark blue brick)  </li>
 </ul>
 
 Note that the border of the map cannot contain any empty tiles (``0``).
